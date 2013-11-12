@@ -1,6 +1,7 @@
 """
-Python wrappers for various photometry tools
+Python wrappers for photometry tools
 """
 
-from astromatic import *
+from sextractor import *
+from scamp import *
 from daophot import *
