@@ -1,5 +1,8 @@
 from __future__ import division, print_function
 
+import os
+import tempfile
+
 from .astromatic import *
 
 __all__ = ['Sextractor']
@@ -13,14 +16,14 @@ class Sextractor(AstromaticTool):
     ----------
     execpath : None or str
         Path to executable or None to search for it
-    autofunpack : bool
+    autodecompress : bool
         If True, will automatically use ``funpack`` to unpack input files that
         end in ``.fz`` (SExtractor can't handle fits compression).  Can be a
         string, in which case it points to the executable for funpack.
     """
     defaultexecname = 'sex'
 
-    def __init__(self, execpath=None, autofunpack=True):
+    def __init__(self, execpath=None, autodecompress=True):
         super(Sextractor, self).__init__(execpath)
 
         self._parse_outputs(self._invoke_tool(['-dp'])[0])
@@ -29,7 +32,7 @@ class Sextractor(AstromaticTool):
 
         self.cfg.PARAMETERS_NAME = ProxyInputFile('PLACEHOLDER: WILL BE POPULATED BY Sextractor CLASS')
 
-        self.autofunpack = autofunpack
+        self.autodecompress = autodecompress
 
     def _parse_outputs(self, contents):
         self.valid_outputs = values = []
@@ -178,90 +181,88 @@ class Sextractor(AstromaticTool):
         else:
             return content
 
-    def sextract_single(self, img, proxycat=False):
+    def sextract_single(self, imgfn, proxycat=False):
         """
         Run sextractor in single output mode
 
         Parameters
         ----------
-        img : str
+        imgfn : str
             The input file
         proxycat : bool
             If True, will overwrite `CATALOG_NAME` with an output proxy, so
             the catalog will only be saved there.  It can be accessed later
             with `self.get_output()`.
         """
-        import os
-
-        funimg = self._try_funpack(img)
+        decompfn = self._try_decompress(imgfn)
         try:
-            self._invoke_tool([img if funimg is None else funimg], showoutput=True)
-            self.lastimg = img
+            self._invoke_tool([imgfn if decompfn is None else decompfn], showoutput=True)
+            self.lastimgfn = imgfn
         finally:
-            if funimg is not None:
-                if os.path.isfile(funimg):
-                    os.remove(funimg)
+            if decompfn is not None:
+                if os.path.isfile(decompfn):
+                    os.remove(decompfn)
 
     def sextract_double(self, masterimg, analysisimg, proxycat=False):
-        import os
-
-        masterfunimg = self._try_funpack(masterimg)
-        analysisfunimg = self._try_funpack(analysisimg)
+        masterdecompfn = self._try_decompress(masterimgfn)
+        analysisdecompfn = self._try_decompress(analysisimgfn)
         try:
-            self._invoke_tool([masterimg if masterfunimg is None else masterfunimg,
-                               analysisimg if analysisfunimg is None else analysisfunimg],
+            self._invoke_tool([masterimgfn if masterdecompfn is None else masterdecompfn,
+                               analysisimgfn if analysisdecompfn is None else analysisdecompfn],
                               showoutput=True)
         finally:
-            if analysisfunimg is not None:
-                if os.path.isfile(analysisfunimg):
-                    os.remove(analysisfunimg)
-            if masterfunimg is not None:
-                if os.path.isfile(masterfunimg):
-                    os.remove(masterfunimg)
+            if analysisdecompfn is not None:
+                if os.path.isfile(analysisdecompfn):
+                    os.remove(analysisdecompfn)
+            if masterdecompfn is not None:
+                if os.path.isfile(masterdecompfn):
+                    os.remove(masterdecompfn)
 
-        self.lastimg = analysisimg
-        self.lastmaster = masterimg
+        self.lastimgfn = analysisimgfn
+        self.lastmasterfn = masterimgfn
 
-    def _try_funpack(self, fn):
+    # used by _try_decompress
+    exttodecompresser = {'.fz': 'funpack', '.gz': 'gunzip'}
+
+    def _try_decompress(self, fn):
         """
         runs funpack if necessary.
 
         Returns a (closed) temporary file object, which needs to be manually
         deleted when no longer needed, or None if funpack is unnecessary
         """
-        import os
         import time
-        import tempfile
         import subprocess
 
         from .utils import which_path
 
-        if fn.endswith('.fz'):
-            if self.autofunpack is True:
-                self.autofunpack = which_path('funpack')
+        if not self.autodecompress:
+            return None  # bail immediately
 
-            if fn.endswith('.fz'):
-                tfn = os.path.split(fn[:-3])[1]
-            else:
-                tfn = os.path.split(fn)[1]
-            tfn = os.path.join(tempfile.gettempdir(), tempfile.gettempprefix() + tfn)
-            if os.path.exists(tfn):
-                os.remove(tfn)
-
-            if self.verbose:
-                print('Running funpack to extract file {0} to {1}'.format(fn, tfn))
-            sttime = time.time()
-            retcode = subprocess.call([self.autofunpack, '-O', tfn, fn])
-            etime = time.time()
-            if retcode != 0:
-                raise OSError('funpack failed with return code ' + str(retcode))
-            if self.verbose:
-                print('Funpack finished in {0} secs'.format(etime - sttime))
-
-            return tfn
+        for ext in self.exttodecompresser:
+            if fn.endswith(ext):
+                decompresser = which_path(self.exttodecompresser[ext])
+                break
         else:
-            # technically unnecessary, but useful for clarity's sake
-            return None
+            return None  # not a decompressable file
+
+        tfn = os.path.split(fn[:-len(ext)])[1]
+        tfn = os.path.join(tempfile.gettempdir(), tempfile.gettempprefix() + tfn)
+
+        if os.path.exists(tfn):
+            os.remove(tfn)
+
+        if self.verbose:
+            print('Running {prog} to extract file {0} to {1}'.format(fn, tfn, prog=decompresser))
+        sttime = time.time()
+        retcode = subprocess.call([decompresser, '-O', tfn, fn])
+        etime = time.time()
+        if retcode != 0:
+            raise OSError('{prog} failed with return code '.format(prog=decompresser) + str(retcode))
+        if self.verbose:
+            print('{prog} finished in {0} secs'.format(etime - sttime, prog=decompresser))
+
+        return tfn
 
     def ds9_mark(self, sizekey='FLUX_RADIUS', ds9=None, doload=True, clearmarks=True):
         """
@@ -298,10 +299,10 @@ class Sextractor(AstromaticTool):
                 ds9 = self.lastds9 = pysao.ds9()
 
         currfn = ds9.get('iis filename').strip()
-        if currfn != self.lastimg:
+        if currfn != self.lastimgfn:
             if self.verbose:
-                print("Current filename {0} does not match {1}.  Reloading.".format(currfn, self.lastimg))
-            ds9.load_fits(self.lastimg)
+                print("Current filename {0} does not match {1}.  Reloading.".format(currfn, self.lastimgfn))
+            ds9.load_fits(self.lastimgfn)
         elif clearmarks:
             #delete existing marks
             ds9.set('regions delete all')
@@ -330,6 +331,95 @@ class Sextractor(AstromaticTool):
         ds9.mark(x, y, sz)
 
         return ds9
+
+    def load_cfg_from_xml(self, xmlfile, compressedimgpaths=['.'],
+                          tempfileprefix=os.path.join(tempfile.gettempdir(), tempfile.gettempprefix())):
+        """
+        Loads a previous configuration from the specified sextractor XML file.
+
+        This includes setting `lastimgfn` to match the generate file.
+
+        Parameters
+        ----------
+        xmlfile : str
+            The path to the xml file to load from.
+        compressedimgpaths : list of str
+            Possible paths to search for *compressed* image files (e.g.,
+            ``.fits.fz`` files).
+        tempfileprefix : str
+            the prefix for temporary files on the system used to generate this
+            xml file.  The default should be right if you do this in the same
+            place you did the reductions.
+
+        .. note::
+            `compressedimgpaths` is only necessary because we have to decompress
+            a compressed fits file if it's the input, which is done in a
+            temporary file.  So this path is necessary to map that onto a location.
+
+
+        """
+        from xml.etree import cElementTree as et
+
+        tree = et.parse(xmlfile)
+
+        #first find the input file and see if it can be found
+        inputfn = tree.find(".//PARAM[@name='Image_Name']").get('value')
+        if not os.path.isfile(inputfn):
+            #search for compressed versions in the compressedimgpaths
+            newinputfn = None
+            truebaseinputfn = inputfn.replace(tempfileprefix, '')
+            for path in compressedimgpaths:
+                basefn = os.path.join(path, truebaseinputfn)
+                for ext in self.exttodecompresser:
+                    print('testing', basefn + ext, path, basefn)
+                    if os.path.isfile(basefn + ext):
+                        newinputfn = basefn + ext
+                        break
+                if newinputfn is not None:
+                    inputfn = newinputfn
+                    break
+            else:
+                print('Could not find input file {0}, nor a compressed '
+                      'version of it in `compressedimgpaths`. Will set '
+                      '`lastimgfn` attribute to None'.format(inputfn))
+                inputfn = None
+
+        #now find all the configuration
+        cfgparams = tree.findall(".//RESOURCE[@ID='Config']/PARAM")
+        #filter out those that are not actually configuration settings
+        cfgparams = [p for p in cfgparams if not p.get('name') in ('Command_Line', 'Prefs_Name')]
+
+        #backup settings so we can revert if need be
+        oldcfgset = self.cfg._config_settings.copy()
+        try:
+            for p in cfgparams:
+                cfgnm = p.get('name').upper()
+                val = p.get('value')
+
+                if 'meta.file' in p.get('ucd'):
+                    # need to check for things that look like temp files, and
+                    # skip them if they are supposed to be proxies
+                    if val.startswith(tempfileprefix):
+                        #mean's it should be some sort of proxy
+                        if 'Proxy' in self.cfg[cfgnm].__class__.__name__:
+                            if self.verbose:
+                                print('Config setting {0} is being left as a '
+                                      'proxy'.format(cfgnm))
+                            continue  # means its just fine as a proxy
+                        else:
+                            print('Config setting {0} looks like a temporary '
+                                  'file but is not a proxy.  Setting it to a '
+                                  'temporary file, but this is probably '
+                                  'invalid.'.format(cfgnm))
+                self.cfg[cfgnm] = val
+
+            self.lastimgfn = inputfn  # this might end up None, but that's fine because the previous value would be invalid anyway
+        except Exception:
+            #put back in the old settings
+            self.cfg._config_settings.clear()
+            self.cfg._config_settings.update(oldcfgset)
+            #don't need to revert lastimgfn because it's the last thing in the try
+            raise
 
 
 def _generate_conv_filter_files_string(fns=None):
