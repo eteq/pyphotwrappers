@@ -181,19 +181,22 @@ class Sextractor(AstromaticTool):
         else:
             return content
 
-    def sextract_single(self, imgfn, proxycat=False):
+    def sextract_single(self, imgfn=None, proxycat=False):
         """
         Run sextractor in single output mode
 
         Parameters
         ----------
-        imgfn : str
-            The input file
+        imgfn : str or None
+            The input file or None to use `lastimgfn`
         proxycat : bool
             If True, will overwrite `CATALOG_NAME` with an output proxy, so
             the catalog will only be saved there.  It can be accessed later
             with `self.get_output()`.
         """
+        if imgfn is None:
+            imgfn = getattr(self, 'lastimgfn', None)
+
         decompfn = self._try_decompress(imgfn)
         try:
             self._invoke_tool([imgfn if decompfn is None else decompfn], showoutput=True)
@@ -203,7 +206,26 @@ class Sextractor(AstromaticTool):
                 if os.path.isfile(decompfn):
                     os.remove(decompfn)
 
-    def sextract_double(self, masterimg, analysisimg, proxycat=False):
+    def sextract_double(self, masterimg=None, analysisimg=None, proxycat=False):
+        """
+        Run sextractor in single output mode
+
+        Parameters
+        ----------
+        masterimg : str or None
+            The input file or None to use `lastmasterimgfn`
+        analysisimg : str or None
+            The input analysis file or None to use `lastimgfn`
+        proxycat : bool
+            If True, will overwrite `CATALOG_NAME` with an output proxy, so
+            the catalog will only be saved there.  It can be accessed later
+            with `self.get_output()`.
+        """
+        if masterimgfn is None:
+            masterimgfn = getattr(self, 'lastmasterimgfn', None)
+        if analysisimg is None:
+            analysisimg = getattr(self, 'lastimgfn', None)
+
         masterdecompfn = self._try_decompress(masterimgfn)
         analysisdecompfn = self._try_decompress(analysisimgfn)
         try:
@@ -219,7 +241,7 @@ class Sextractor(AstromaticTool):
                     os.remove(masterdecompfn)
 
         self.lastimgfn = analysisimgfn
-        self.lastmasterfn = masterimgfn
+        self.lastmasterimgfn = masterimgfn
 
     # used by _try_decompress
     exttodecompresser = {'.fz': 'funpack', '.gz': 'gunzip'}
@@ -264,12 +286,15 @@ class Sextractor(AstromaticTool):
 
         return tfn
 
-    def ds9_mark(self, sizekey='FLUX_RADIUS', ds9=None, doload=True, clearmarks=True):
+    def ds9_mark(self, mask=None, sizekey='FLUX_RADIUS', ds9=None, doload=True, clearmarks=True, frame=None):
         """
         Mark the sextracted outputs on ds9.
 
         Parameters
         ----------
+        mask : array or None
+            A mask that will be applied to the x/y/size arrays to get the sample
+            to mark or None to show everything
         sizekey : str or number
             The name of the column to use as the size of the circles or a
             number for them all to be the same.  If key is missing, default=5.
@@ -277,7 +302,9 @@ class Sextractor(AstromaticTool):
             if None, a new DS9 will be started, otherwise the instance to use
         doload : bool
             If True, loads the file.
-        clearmarks
+        clearmarks : bool
+            If True, clears the marks
+
         """
         import pysao
 
@@ -328,11 +355,16 @@ class Sextractor(AstromaticTool):
             except KeyError:
                 raise KeyError('Could not find X_IMAGE/Y_IMAGE or XWIN_IMAGE/YWIN_IMAGE')
 
+        if mask is not None:
+            x = x[mask]
+            y = y[mask]
+            sz = np.array(sz)[mask]
+
         ds9.mark(x, y, sz)
 
         return ds9
 
-    def load_cfg_from_xml(self, xmlfile, compressedimgpaths=['.'],
+    def load_cfg_from_xml(self, xmlfile, onlyimg=False, compressedimgpaths=['.'],
                           tempfileprefix=os.path.join(tempfile.gettempdir(), tempfile.gettempprefix())):
         """
         Loads a previous configuration from the specified sextractor XML file.
@@ -343,6 +375,8 @@ class Sextractor(AstromaticTool):
         ----------
         xmlfile : str
             The path to the xml file to load from.
+        onlyimg : bool
+            Loads only the image and nothing else.
         compressedimgpaths : list of str
             Possible paths to search for *compressed* image files (e.g.,
             ``.fits.fz`` files).
@@ -362,16 +396,24 @@ class Sextractor(AstromaticTool):
 
         tree = et.parse(xmlfile)
 
+        #make compressedimgpaths into a directory list
+        compressedpathset = []
+        for p in compressedimgpaths:
+            if os.path.isfile(p):
+                compressedpathset.append(os.path.split(p)[0])
+            else:
+                compressedpathset.append(p)
+        compressedpathset = set(compressedpathset)
+
         #first find the input file and see if it can be found
         inputfn = tree.find(".//PARAM[@name='Image_Name']").get('value')
         if not os.path.isfile(inputfn):
-            #search for compressed versions in the compressedimgpaths
+            #search for compressed versions in the compressedpathset
             newinputfn = None
             truebaseinputfn = inputfn.replace(tempfileprefix, '')
-            for path in compressedimgpaths:
+            for path in compressedpathset:
                 basefn = os.path.join(path, truebaseinputfn)
                 for ext in self.exttodecompresser:
-                    print('testing', basefn + ext, path, basefn)
                     if os.path.isfile(basefn + ext):
                         newinputfn = basefn + ext
                         break
@@ -380,8 +422,8 @@ class Sextractor(AstromaticTool):
                     break
             else:
                 print('Could not find input file {0}, nor a compressed '
-                      'version of it in `compressedimgpaths`. Will set '
-                      '`lastimgfn` attribute to None'.format(inputfn))
+                      'version of it in {1}. Will set `lastimgfn` attribute '
+                      'to None'.format(truebaseinputfn, compressedpathset))
                 inputfn = None
 
         #now find all the configuration
@@ -389,35 +431,55 @@ class Sextractor(AstromaticTool):
         #filter out those that are not actually configuration settings
         cfgparams = [p for p in cfgparams if not p.get('name') in ('Command_Line', 'Prefs_Name')]
 
+        #now find the outputs
+        outputparams = tree.findall(".//TABLE[@ID='Source_List']/FIELD")
+
         #backup settings so we can revert if need be
         oldcfgset = self.cfg._config_settings.copy()
+        oldoutputs = self.outputs[:]
         try:
-            for p in cfgparams:
-                cfgnm = p.get('name').upper()
-                val = p.get('value')
+            if not onlyimg:
+                for p in cfgparams:
+                    cfgnm = p.get('name').upper()
+                    val = p.get('value')
 
-                if 'meta.file' in p.get('ucd'):
-                    # need to check for things that look like temp files, and
-                    # skip them if they are supposed to be proxies
-                    if val.startswith(tempfileprefix):
-                        #mean's it should be some sort of proxy
-                        if 'Proxy' in self.cfg[cfgnm].__class__.__name__:
-                            if self.verbose:
-                                print('Config setting {0} is being left as a '
-                                      'proxy'.format(cfgnm))
-                            continue  # means its just fine as a proxy
+                    if 'meta.file' in p.get('ucd'):
+                        # need to check for things that look like temp files, and
+                        # skip them if they are supposed to be proxies
+                        if val.startswith(tempfileprefix):
+                            #mean's it should be some sort of proxy
+                            if 'Proxy' in self.cfg[cfgnm].__class__.__name__:
+                                if self.verbose:
+                                    print('Config setting {0} is being left as a '
+                                          'proxy'.format(cfgnm))
+                                continue  # means its just fine as a proxy
+                            else:
+                                print('Config setting {0} looks like a temporary '
+                                      'file but is not a proxy.  Setting it to a '
+                                      'temporary file, but this is probably '
+                                      'invalid.'.format(cfgnm))
+
+                    if p.get('datatype') == 'boolean':
+                        #need to map 'T'/'F' to 'Y'/'N' for booleans
+                        if val == 'T':
+                            self.cfg[cfgnm] = 'Y'
+                        elif val == 'F':
+                            self.cfg[cfgnm] = 'N'
                         else:
-                            print('Config setting {0} looks like a temporary '
-                                  'file but is not a proxy.  Setting it to a '
-                                  'temporary file, but this is probably '
-                                  'invalid.'.format(cfgnm))
-                self.cfg[cfgnm] = val
+                            raise ValueError('Invalid XML boolean value ' + str(val))
+                    else:
+                        self.cfg[cfgnm] = val
+
+                del self.outputs[:len(self.outputs)]  # clear old outputs
+                self.add_outputs([p.get('name') for p in outputparams])
 
             self.lastimgfn = inputfn  # this might end up None, but that's fine because the previous value would be invalid anyway
         except Exception:
             #put back in the old settings
             self.cfg._config_settings.clear()
             self.cfg._config_settings.update(oldcfgset)
+            del self.outputs[:len(self.outputs)]
+            self.outputs[:] = oldoutputs
             #don't need to revert lastimgfn because it's the last thing in the try
             raise
 
