@@ -4,6 +4,7 @@ from .astromatic import *
 
 __all__ = ['Scamp']
 
+
 class Scamp(AstromaticTool):
     defaultexecname = 'scamp'
 
