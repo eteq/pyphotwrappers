@@ -300,7 +300,6 @@ class AstromaticConfiguration(object):
         """
         elems = []
         for iname, val in self.get_normalized_items():
-
             elems.append('-' + iname)
             elems.append(val)
         return elems
@@ -348,12 +347,5 @@ class ProxyOutputFile(object):
         return ascii.read(self.content, *args, **kwargs)
 
 
-
-
 class AstromaticError(Exception):
     pass
-
-
-
-
-
