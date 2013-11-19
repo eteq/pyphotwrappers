@@ -292,25 +292,25 @@ class AstromaticConfiguration(object):
                 outs.append(val)
         return ins, outs
 
-    def get_cmdline_arguments(self):
+    def get_cmdline_arguments(self, acceptungenerated=False):
         """
         Returns a list of the command line argument items needed to use
         these settings.  To get the actual command line string, do
         ``' '.join(res)`` on the return value
         """
         elems = []
-        for iname, val in self.get_normalized_items():
+        for iname, val in self.get_normalized_items(acceptungenerated=acceptungenerated):
             elems.append('-' + iname)
             elems.append(val)
         return elems
 
-    def get_file_contents(self):
+    def get_file_contents(self, acceptungenerated=False):
         """
         Returns a string with the contents expected for an AstrOmatic
         tool's configuration file format.
         """
         lines = []
-        for iname, val in self.get_normalized_items():
+        for iname, val in self.get_normalized_items(acceptungenerated=acceptungenerated):
             lines.append(iname + ' ' + val)
         return '\n'.join(lines)
 
