@@ -10,3 +10,11 @@ class Swarp(AstromaticTool):
 
     def __init__(self, execpath=None):
         super(Swarp, self).__init__(execpath)
+
+    def swarp_images(self, imgs):
+        """
+        Runs swarp on the given `imgs`
+        """
+        if isinstance(imgs, basestring):
+            imgs = [imgs]
+        self._invoke_tool(imgs, showoutput=True)
