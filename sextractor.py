@@ -20,10 +20,16 @@ class Sextractor(AstromaticTool):
         If True, will automatically use ``funpack`` to unpack input files that
         end in ``.fz`` (SExtractor can't handle fits compression).  Can be a
         string, in which case it points to the executable for funpack.
+    renameoutputs : str or None
+        If present, indicates that the output files should be renamed to the
+        provided string pattern.  The string can include '{path}', '{fn}',
+        '{input}', and '{object}', meaning the path and name from the
+        configuration, the base name of the input file, and the 'OBJECT' fits
+        header keyword (if present).
     """
     defaultexecname = 'sex'
 
-    def __init__(self, execpath=None, autodecompress=True):
+    def __init__(self, execpath=None, autodecompress=True, renameoutputs=None):
         super(Sextractor, self).__init__(execpath)
 
         self._parse_outputs(self._invoke_tool(['-dp'])[0])
@@ -33,6 +39,7 @@ class Sextractor(AstromaticTool):
         self.cfg.PARAMETERS_NAME = ProxyInputFile('PLACEHOLDER: WILL BE POPULATED BY Sextractor CLASS')
 
         self.autodecompress = autodecompress
+        self.renameoutputs = renameoutputs
 
     def _parse_outputs(self, contents):
         self.valid_outputs = values = []
@@ -181,7 +188,7 @@ class Sextractor(AstromaticTool):
         else:
             return content
 
-    def sextract_single(self, imgfn=None, proxycat=False):
+    def sextract_single(self, imgfn=None):
         """
         Run sextractor in single output mode
 
@@ -189,10 +196,6 @@ class Sextractor(AstromaticTool):
         ----------
         imgfn : str or None
             The input file or None to use `lastimgfn`
-        proxycat : bool
-            If True, will overwrite `CATALOG_NAME` with an output proxy, so
-            the catalog will only be saved there.  It can be accessed later
-            with `self.get_output()`.
         """
         if imgfn is None:
             imgfn = getattr(self, 'lastimgfn', None)
@@ -201,12 +204,16 @@ class Sextractor(AstromaticTool):
         try:
             self._invoke_tool([imgfn if decompfn is None else decompfn], showoutput=True)
             self.lastimgfn = imgfn
+
+            if self.renameoutputs:
+                self._rename_outputs()  # uses lastimgfn to figure out the new names
         finally:
             if decompfn is not None:
                 if os.path.isfile(decompfn):
                     os.remove(decompfn)
 
-    def sextract_double(self, masterimg=None, analysisimg=None, proxycat=False):
+
+    def sextract_double(self, masterimg=None, analysisimg=None):
         """
         Run sextractor in single output mode
 
@@ -216,10 +223,6 @@ class Sextractor(AstromaticTool):
             The input file or None to use `lastmasterimgfn`
         analysisimg : str or None
             The input analysis file or None to use `lastimgfn`
-        proxycat : bool
-            If True, will overwrite `CATALOG_NAME` with an output proxy, so
-            the catalog will only be saved there.  It can be accessed later
-            with `self.get_output()`.
         """
         if masterimgfn is None:
             masterimgfn = getattr(self, 'lastmasterimgfn', None)
@@ -232,6 +235,12 @@ class Sextractor(AstromaticTool):
             self._invoke_tool([masterimgfn if masterdecompfn is None else masterdecompfn,
                                analysisimgfn if analysisdecompfn is None else analysisdecompfn],
                               showoutput=True)
+
+            self.lastimgfn = analysisimgfn
+            self.lastmasterimgfn = masterimgfn
+
+            if self.renameoutputs:
+                self._rename_outputs()  # uses lastimgfn to figure out the new names
         finally:
             if analysisdecompfn is not None:
                 if os.path.isfile(analysisdecompfn):
@@ -240,8 +249,45 @@ class Sextractor(AstromaticTool):
                 if os.path.isfile(masterdecompfn):
                     os.remove(masterdecompfn)
 
-        self.lastimgfn = analysisimgfn
-        self.lastmasterimgfn = masterimgfn
+    def _rename_outputs(self):
+        from shutil import move
+
+        inputfn = self.lastimgfn
+        input_ = os.path.split(inputfn)[1].split('.fits')[0]
+
+        if '{object}' in self.renameoutputs:
+            from astropy.io import fits
+            with fits.open(inputfn) as f:
+                for hdu in f:
+                    if 'OBJECT' in hdu.header:
+                        object_ = hdu.header['OBJECT']
+                        break
+                else:
+                    object_ = ''
+        else:
+            object_ = None
+
+        #rename main catalog
+        if os.path.isfile(self.cfg.CATALOG_NAME):
+            path, fn = os.path.split(self.cfg.CATALOG_NAME)
+            newfn = self.renameoutputs.format(path=path, fn=fn, object=object_,
+                                              input=input_)
+            move(self.cfg.CATALOG_NAME, newfn)
+
+        #rename XML output if present
+        if os.path.isfile(self.cfg.XML_NAME):
+            path, fn = os.path.split(self.cfg.XML_NAME)
+            newfn = self.renameoutputs.format(path=path, fn=fn, object=object_,
+                                              input=input_)
+            move(self.cfg.XML_NAME, newfn)
+
+        #rename check images if present
+        for cimgfn in self.cfg.CHECKIMAGE_NAME.split(','):
+            cimgfn = cimgfn.strip() + '.fits' # just in case
+            if os.path.isfile(cimgfn):
+                path, fn = os.path.split(cimgfn)
+                newfn = self.renameoutputs.format(path=path, fn=fn, object=object_, input=input_)
+                move(cimgfn, newfn)
 
     # used by _try_decompress
     exttodecompresser = {'.fz': 'funpack', '.gz': 'gunzip'}
