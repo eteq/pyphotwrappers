@@ -5,8 +5,11 @@ Specific tools are in their own modules.
 """
 from __future__ import division, print_function
 
+import collections
+
 __all__ = ['AstromaticTool',
            'AstromaticConfiguration',
+           'AstromaticComments',
            'AstromaticError',
            'ProxyInputFile',
            'ProxyOutputFile'
@@ -151,11 +154,12 @@ class AstromaticConfiguration(object):
         else:
             self._config_items = []
             self._config_settings = {}
-            self._config_comments = {}
+            comments_dict = {}
             for nm in config:
                 self._config_items.append(nm)
                 self._config_settings[nm] = config[nm]
-                self._config_comments[nm] = ''
+                comments_dict[nm] = ''
+            self._comments = AstromaticComments(comments_dict)
 
     def _parse_config_file(self, configstr):
         """
@@ -163,7 +167,7 @@ class AstromaticConfiguration(object):
         """
         self._config_items = []
         self._config_settings = {}
-        self._config_comments = {}
+        comments_dict = {}
         for l in configstr.split('\n'):
             if not (l.startswith('#') or l.strip() == ''):
                 ls = l.split('#')
@@ -177,7 +181,7 @@ class AstromaticConfiguration(object):
                 if contentstrip == '':
                     #it's a continuation from the previous comment
                     lasti = self._config_items[-1]
-                    self._config_comments[lasti] += ' ' + comment.strip()
+                    comments_dict[lasti] += ' ' + comment.strip()
                 else:
                     contentsplit = contentstrip.split()
                     if len(contentsplit) > 1:
@@ -191,7 +195,8 @@ class AstromaticConfiguration(object):
 
                     self._config_items.append(nm)
                     self._config_settings[nm] = val
-                    self._config_comments[nm] = comment
+                    comments_dict[nm] = comment
+        self._comments = AstromaticComments(comments_dict)
 
     @property
     def names(self):
@@ -199,12 +204,12 @@ class AstromaticConfiguration(object):
 
     @property
     def comments(self):
-        return self._config_comments.copy()
+        return self._comments
 
     def __str__(self):
         lines = ['Astromatic configuration file:']
         for nm, val in self.get_normalized_items(acceptungenerated=True):
-            lines.append((nm, val, self._config_comments[nm]))
+            lines.append((nm, val, self.comments[nm]))
         return '\n'.join([str(i) for i in lines])
 
     def __getattr__(self, name):
@@ -313,6 +318,39 @@ class AstromaticConfiguration(object):
         for iname, val in self.get_normalized_items(acceptungenerated=acceptungenerated):
             lines.append(iname + ' ' + val)
         return '\n'.join(lines)
+
+
+class AstromaticComments(collections.Mapping):
+    """
+    A very simple class for storing comments that allows attribute-style *OR*
+    dict-style access
+    """
+    def __init__(self, comment_dict):
+        self._comment_dict = comment_dict
+
+    def __getattr__(self, key):
+        if key.startswith('_') or key not in self._comment_dict:
+            # this should always fail in the standard way
+            return object.__getattribute__(self, key)
+        return self._comment_dict[key]
+
+    def __dir__(self):
+        drs = dir(self.__class__)
+        drs.extend(self.__dict__)
+        drs.extend(self._comment_dict)
+        return drs
+
+    def __getitem__(self, key):
+        return self._comment_dict[key]
+
+    def __len__(self):
+        return len(self._comment_dict)
+
+    def __iter__(self):
+        return iter(self._comment_dict)
+
+    def __eq__(self, obj):
+        return self._comment_dict == obj
 
 
 class ProxyInputFile(object):
