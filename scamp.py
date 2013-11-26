@@ -70,8 +70,10 @@ class Scamp(AstromaticTool):
         -------
         xmlmap : dict
             Mapping of XML file names as written by scamp mapped to new names.
-        cpmap : dict
-            Mapping of checkplot file names as written by scamp to new names.
+        cppatmap : dict
+            Mapping of checkplot file *patterns* as written by scamp to new
+            patterns.  These are patterns because scamp sometimes makes multiple
+            checkplots.
         """
         import os
 
@@ -91,11 +93,11 @@ class Scamp(AstromaticTool):
             fn=fn, input=input_)
         xmlmap = {oldxmlfn: newxmlfn}
 
-        cpmap = {}
+        cppatmap = {}
         cpext = self._CP_DEV_TO_EXT[self.cfg.CHECKPLOT_DEV]
         if cpext is None:
             # means this is a type that doesn't generate files
-            return xmlmap, cpmap
+            return xmlmap, cppatmap
         for cpfn in self.cfg.CHECKPLOT_NAME.split(','):
             cpfn = cpfn.strip() + cpext
             path, fn = os.path.split(cpfn)
@@ -108,17 +110,21 @@ class Scamp(AstromaticTool):
             if self.pstopdf:
                 fn = cpfn[:-3] + '.pdf'
 
-            cpmap[cpfn] = self.renameoutputs.format(
+            basenfn, next = os.path.splitext(self.renameoutputs.format(
                 path=path + ('' if path.endswith(os.path.sep) or path == '' else os.path.sep),
-                fn=fn, input=input_)
+                fn=fn, input=input_))
+            baseofn, oext = os.path.splitext(cpfn)
+            cppatmap[baseofn + '_*' + oext] = basenfn + '_*' + next
 
-        return xmlmap, cpmap
+        return xmlmap, cppatmap
 
     def _reprocess_outputs(self):
         import os
+        import re
+        from glob import glob
         from shutil import move
 
-        xmlmap, cpmap = self.get_reprocessed_output_fns()
+        xmlmap, cppatmap = self.get_reprocessed_output_fns()
 
         for ofn, nfn in xmlmap.iteritems():
             if os.path.isfile(ofn):
@@ -126,10 +132,17 @@ class Scamp(AstromaticTool):
                     print("Moving XML file {0} to {1}".format(ofn, nfn))
                 move(ofn, nfn)
 
+        #find all the actual check plots based on the patterns
+        cpmap = {}
+        for opat, npat in cppatmap.iteritems():
+            rex = re.compile(opat.replace('*', '(.*?)'))
+            for fn in glob(opat):
+                cpmap[fn] = npat.replace('*', rex.match(fn).group(1))
+
         for ofn, nfn in cpmap.iteritems():
             if nfn.endswith('.pdf'):
                 self._do_pstopdf(ofn, nfn)
-                os.path.remove(ofn)
+                os.remove(ofn)
             else:
                 if self.verbose:
                     print("Moving check plot {0} to {1}".format(ofn, nfn))
