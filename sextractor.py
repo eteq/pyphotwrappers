@@ -287,30 +287,28 @@ class Sextractor(AstromaticTool):
         #main catalog
         oldcatfn = self.cfg.CATALOG_NAME
         path, fn = os.path.split(oldcatfn)
-        newcatfn = self.renameoutputs.format(path=path, fn=fn, object=object_,
-                                             input=input_)
+        newcatfn = self.renameoutputs.format(
+                path=path + ('' if path.endswith(os.path.sep) or path == '' else os.path.sep),
+                fn=fn, object=object_, input=input_)
         catmap = {oldcatfn: newcatfn}
 
         #XML output
         oldxmlfn = self.cfg.XML_NAME
         path, fn = os.path.split(oldxmlfn)
-        newxmlfn = self.renameoutputs.format(path=path, fn=fn, object=object_,
-                                             input=input_)
+        newxmlfn = self.renameoutputs.format(
+                path=path + ('' if path.endswith(os.path.sep) or path == '' else os.path.sep),
+                fn=fn, object=object_, input=input_)
         xmlmap = {oldxmlfn: newxmlfn}
-
-        #check image names
-        if self.checkimgpath:
-            checkimgpath = self.checkimgpath + ('' if checkimgpath.endswith(os.sep) else os.sep)
-        else:
-            checkimgpath = None
 
         cimgmap = {}
         for cimgfn in self.cfg.CHECKIMAGE_NAME.split(','):
             cimgfn = cimgfn.strip() + '.fits'  # just in case
             path, fn = os.path.split(cimgfn)
+            if self.checkimgpath:
+                path = self.checkimgpath
 
             cimgmap[cimgfn] = self.renameoutputs.format(
-                path=checkimgpath if checkimgpath else path,
+                path=path + ('' if path.endswith(os.path.sep) or path == '' else os.path.sep),
                 fn=fn, object=object_, input=input_)
 
         return catmap, xmlmap, cimgmap

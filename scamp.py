@@ -62,23 +62,26 @@ class Scamp(AstromaticTool):
         #XML output
         oldxmlfn = self.cfg.XML_NAME
         path, fn = os.path.split(oldxmlfn)
-        newxmlfn = self.renameoutputs.format(path=path, fn=fn, input=input_)
+        newxmlfn = self.renameoutputs.format(
+            path=path + ('' if path.endswith(os.path.sep) or path == '' else os.path.sep),
+            fn=fn, input=input_)
         xmlmap = {oldxmlfn: newxmlfn}
-
-        #rename check plots if present
-        if self.checkplotpath:
-            checkplotpath = self.checkplotpath + ('' if checkplotpath.endswith(os.sep) else os.sep)
-        else:
-            checkplotpath = None
 
         cpmap = {}
         for cpfn in self.cfg.CHECKPLOT_NAME.split(','):
             cpfn = cpfn.strip() + '.ps'
             path, fn = os.path.split(cpfn)
+
+            #rename checkplot
+            if self.checkplotpath:
+                path = self.checkplotpath
+
+            #rename if pstopdf is true
             if self.pstopdf:
                 fn = cpfn[:-3] + '.pdf'
+
             cpmap[cpfn] = self.renameoutputs.format(
-                path=checkplotpath if checkplotpath else path,
+                path=path + ('' if path.endswith(os.path.sep) or path == '' else os.path.sep),
                 fn=fn, input=input_)
 
         return xmlmap, cpmap
@@ -103,7 +106,7 @@ class Scamp(AstromaticTool):
                 os.path.remove(ofn)
             else:
                 if self.verbose:
-                    print("Moving check plot {0} to {1}".format(cpfn, newfn))
+                    print("Moving check plot {0} to {1}".format(ofn, newfn))
                 move(ofn, nfn)
 
     def _do_pstopdf(self, psfn, newfn):
