@@ -106,7 +106,7 @@ class Scamp(AstromaticTool):
                 os.path.remove(ofn)
             else:
                 if self.verbose:
-                    print("Moving check plot {0} to {1}".format(ofn, newfn))
+                    print("Moving check plot {0} to {1}".format(ofn, nfn))
                 move(ofn, nfn)
 
     def _do_pstopdf(self, psfn, newfn):
