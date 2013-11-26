@@ -19,9 +19,21 @@ class Scamp(AstromaticTool):
         """
         Runs scamp on the given `catfns`
         """
+        from warnings import warn
+
         if isinstance(catfns, basestring):
             catfns = [catfns]
-        self._invoke_tool(catfns, showoutput=True)
+
+        initialcpdev = self.cfg.CHECKPLOT_DEV
+        try:
+            if self.pstopdf and self._CP_DEV_TO_EXT[self.cfg.CHECKPLOT_DEV] != '.ps':
+                warn('CHECKPLOT_DEV is not a postscript output, but ps->pdf '
+                     'conversion was requested.  Changing to "PSC".')
+                self.cfg.CHECKPLOT_DEV = 'PSC'
+            self._invoke_tool(catfns, showoutput=True)
+        finally:
+            self.cfg.CHECKPLOT_DEV = initialcpdev
+
         self.lastcats = catfns
 
         if self.renameoutputs:
@@ -36,6 +48,18 @@ class Scamp(AstromaticTool):
             vstr = ("'" + v + "'") if isinstance(v, basestring) else str(v)
             headlns.append(keystr + '= ' + vstr)
         self.cfg.AHEADER_GLOBAL = ProxyInputFile('\n'.join(headlns) + '\n')
+
+    _CP_DEV_TO_EXT = {'NULL': None,
+                      'XWIN': None,
+                      'TK': None,
+                      'PLMETA': '.plm',
+                      'PS': '.ps',
+                      'PSC': '.ps',
+                      'XFIG': '.fig',
+                      'PNG': '.png',
+                      'JPEG': '.jpg',
+                      'PSTEX': '.ps'
+                     }  # used in get_reprocessed_output_fns
 
     def get_reprocessed_output_fns(self):
         """
@@ -68,8 +92,12 @@ class Scamp(AstromaticTool):
         xmlmap = {oldxmlfn: newxmlfn}
 
         cpmap = {}
+        cpext = self._CP_DEV_TO_EXT[self.cfg.CHECKPLOT_DEV]
+        if cpext is None:
+            # means this is a type that doesn't generate files
+            return xmlmap, cpmap
         for cpfn in self.cfg.CHECKPLOT_NAME.split(','):
-            cpfn = cpfn.strip() + '.ps'
+            cpfn = cpfn.strip() + cpext
             path, fn = os.path.split(cpfn)
 
             #rename checkplot
