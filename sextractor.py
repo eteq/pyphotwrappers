@@ -29,8 +29,9 @@ class Sextractor(AstromaticTool):
     """
     defaultexecname = 'sex'
 
-    def __init__(self, execpath=None, autodecompress=True, renameoutputs=None):
-        super(Sextractor, self).__init__(execpath)
+    def __init__(self, execpath=None, autodecompress=True, renameoutputs=None,
+                 checkimgpath=None, verbose=False):
+        super(Sextractor, self).__init__(execpath, verbose=verbose)
 
         self._parse_outputs(self._invoke_tool(['-dp'])[0])
         self.reset_outputs()
@@ -40,6 +41,7 @@ class Sextractor(AstromaticTool):
 
         self.autodecompress = autodecompress
         self.renameoutputs = renameoutputs
+        self.checkimgpath = checkimgpath
 
     def _parse_outputs(self, contents):
         self.valid_outputs = values = []
@@ -249,8 +251,23 @@ class Sextractor(AstromaticTool):
                 if os.path.isfile(masterdecompfn):
                     os.remove(masterdecompfn)
 
-    def _rename_outputs(self):
-        from shutil import move
+    def get_renamed_output_fns(self):
+        """
+        Gets the names that the sextractor outputs will get mapped to if
+        `renameoutputs` is True.
+
+        Returns
+        -------
+        catmap : dict
+            Mapping of catalog file names as written by sextractor mapped to new
+            names.
+        xmlmap : dict
+            Mapping of XML file names as written by sextractor mapped to new
+            names.
+        cimgmap : dict
+            Mapping of check image file names as written by sextractor to new
+            names.
+        """
 
         inputfn = self.lastimgfn
         input_ = os.path.split(inputfn)[1].split('.fits')[0]
@@ -267,27 +284,62 @@ class Sextractor(AstromaticTool):
         else:
             object_ = None
 
+        #main catalog
+        oldcatfn = self.cfg.CATALOG_NAME
+        path, fn = os.path.split(oldcatfn)
+        newcatfn = self.renameoutputs.format(path=path, fn=fn, object=object_,
+                                             input=input_)
+        catmap = {oldcatfn: newcatfn}
+
+        #XML output
+        oldxmlfn = self.cfg.XML_NAME
+        path, fn = os.path.split(oldxmlfn)
+        newxmlfn = self.renameoutputs.format(path=path, fn=fn, object=object_,
+                                             input=input_)
+        xmlmap = {oldxmlfn: newxmlfn}
+
+        #check image names
+        if self.checkimgpath:
+            checkimgpath = self.checkimgpath + ('' if checkimgpath.endswith(os.sep) else os.sep)
+        else:
+            checkimgpath = None
+
+        cimgmap = {}
+        for cimgfn in self.cfg.CHECKIMAGE_NAME.split(','):
+            cimgfn = cimgfn.strip() + '.fits'  # just in case
+            path, fn = os.path.split(cimgfn)
+
+            cimgmap[cimgfn] = self.renameoutputs.format(
+                path=checkimgpath if checkimgpath else path,
+                fn=fn, object=object_, input=input_)
+
+        return catmap, xmlmap, cimgmap
+
+    def _rename_outputs(self):
+        from shutil import move
+
+        catmap, xmlmap, cimgmap = self.get_renamed_output_fns()
+
         #rename main catalog
-        if os.path.isfile(self.cfg.CATALOG_NAME):
-            path, fn = os.path.split(self.cfg.CATALOG_NAME)
-            newfn = self.renameoutputs.format(path=path, fn=fn, object=object_,
-                                              input=input_)
-            move(self.cfg.CATALOG_NAME, newfn)
+        for ofn, nfn in catmap.iteritems():
+            if os.path.isfile(ofn):
+                if self.verbose:
+                    print("Moving catalog output {0} to {1}".format(ofn, nfn))
+                move(ofn, nfn)
 
         #rename XML output if present
-        if os.path.isfile(self.cfg.XML_NAME):
-            path, fn = os.path.split(self.cfg.XML_NAME)
-            newfn = self.renameoutputs.format(path=path, fn=fn, object=object_,
-                                              input=input_)
-            move(self.cfg.XML_NAME, newfn)
+        for ofn, nfn in xmlmap.iteritems():
+            if os.path.isfile(ofn):
+                if self.verbose:
+                    print("Moving XML output {0} to {1}".format(ofn, nfn))
+                move(ofn, nfn)
 
-        #rename check images if present
-        for cimgfn in self.cfg.CHECKIMAGE_NAME.split(','):
-            cimgfn = cimgfn.strip() + '.fits' # just in case
-            if os.path.isfile(cimgfn):
-                path, fn = os.path.split(cimgfn)
-                newfn = self.renameoutputs.format(path=path, fn=fn, object=object_, input=input_)
-                move(cimgfn, newfn)
+        #rename checkimages if present
+        for ofn, nfn in cimgmap.iteritems():
+            if os.path.isfile(ofn):
+                if self.verbose:
+                    print("Moving Check image {0} to {1}".format(ofn, nfn))
+                move(ofn, nfn)
 
     # used by _try_decompress
     exttodecompresser = {'.fz': 'funpack', '.gz': 'gunzip'}

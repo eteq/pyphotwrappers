@@ -8,8 +8,8 @@ __all__ = ['Swarp']
 class Swarp(AstromaticTool):
     defaultexecname = 'swarp'
 
-    def __init__(self, execpath=None):
-        super(Swarp, self).__init__(execpath)
+    def __init__(self, execpath=None, verbose=False):
+        super(Swarp, self).__init__(execpath, verbose=verbose)
 
     def swarp_images(self, imgs):
         """
