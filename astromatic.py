@@ -309,15 +309,37 @@ class AstromaticConfiguration(object):
             elems.append(val)
         return elems
 
-    def get_file_contents(self, acceptungenerated=False):
+    def get_file_contents(self, acceptungenerated=False, outfn=None):
         """
         Returns a string with the contents expected for an AstrOmatic
         tool's configuration file format.
+
+        Parameters
+        ----------
+        acceptungenerated : bool, optional
+            If True, the file will be generated even if proxy files are missing
+            (they will be set to empty strings)
+        outfn : str, optional
+            If given, the configuration contents will be written to this file
+            name.
+
+        Returns
+        -------
+        filecontents : str
+            The contents of a configuration file matching this object.
+
         """
         lines = []
         for iname, val in self.get_normalized_items(acceptungenerated=acceptungenerated):
             lines.append(iname + ' ' + val)
-        return '\n'.join(lines)
+
+        contents = '\n'.join(lines)
+
+        if outfn:
+            with open(outfn, 'w') as f:
+                f.write(contents)
+
+        return contents
 
 
 class AstromaticComments(collections.Mapping):
