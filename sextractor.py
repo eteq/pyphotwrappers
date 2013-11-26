@@ -173,7 +173,11 @@ class Sextractor(AstromaticTool):
             if self.verbose:
                 print("Can't get output if a proxy output was not used - "
                       "reading from file " + self.cfg.CATALOG_NAME)
-            with open(self.cfg.CATALOG_NAME, 'rb') as f:
+            if self.renameoutputs:
+                catfn = self.get_renamed_output_fns()[0].values()[0]
+            else:
+                catfn = self.cfg.CATALOG_NAME
+            with open(catfn, 'rb') as f:
                 content = f.read()
 
         if astable:
@@ -183,7 +187,7 @@ class Sextractor(AstromaticTool):
                 from io import BytesIO
                 return votable.parse(BytesIO(content))
             elif 'ascii' in lcattype:
-                return ascii.read(content, names=self.outputs)
+                return ascii.read(content, Reader=ascii.SExtractor)
             elif 'fits' in lcattype:
                 from astropy.io import fits
                 return fits.HDUList.fromstring(content)[2].data
@@ -215,21 +219,21 @@ class Sextractor(AstromaticTool):
                     os.remove(decompfn)
 
 
-    def sextract_double(self, masterimg=None, analysisimg=None):
+    def sextract_double(self, masterimgfn=None, analysisimgfn=None):
         """
         Run sextractor in single output mode
 
         Parameters
         ----------
-        masterimg : str or None
+        masterimgfn : str or None
             The input file or None to use `lastmasterimgfn`
-        analysisimg : str or None
+        analysisimgfn : str or None
             The input analysis file or None to use `lastimgfn`
         """
         if masterimgfn is None:
             masterimgfn = getattr(self, 'lastmasterimgfn', None)
-        if analysisimg is None:
-            analysisimg = getattr(self, 'lastimgfn', None)
+        if analysisimgfn is None:
+            analysisimgfn = getattr(self, 'lastimgfn', None)
 
         masterdecompfn = self._try_decompress(masterimgfn)
         analysisdecompfn = self._try_decompress(analysisimgfn)
