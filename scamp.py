@@ -100,8 +100,6 @@ class Scamp(AstromaticTool):
 
         for ofn, nfn in cpmap.iteritems():
             if nfn.endswith('.pdf'):
-                if self.verbose:
-                    print("Converting check plot {0} to {1}".format(ofn, nfn))
                 self._do_pstopdf(ofn, nfn)
                 os.path.remove(ofn)
             else:
@@ -110,4 +108,13 @@ class Scamp(AstromaticTool):
                 move(ofn, nfn)
 
     def _do_pstopdf(self, psfn, newfn):
-        raise NotImplementedError
+        import subprocess
+        from .utils import which_path
+
+        if not getattr(self, '_pstopdfexec', None):
+            self._pstopdfexec = which_path('pstopdf')
+
+
+        if self.verbose:
+            print("Converting check plot {0} to {1}".format(psfn, newfn))
+        subprocess.check_call([self._pstopdfexec, psfn, '-o', newfn])
