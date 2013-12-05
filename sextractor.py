@@ -218,7 +218,6 @@ class Sextractor(AstromaticTool):
                 if os.path.isfile(decompfn):
                     os.remove(decompfn)
 
-
     def sextract_double(self, masterimgfn=None, analysisimgfn=None):
         """
         Run sextractor in single output mode
