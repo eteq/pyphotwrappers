@@ -212,7 +212,9 @@ class Sextractor(AstromaticTool):
             self.lastimgfn = imgfn
 
             if self.renameoutputs:
-                self._rename_outputs()  # uses lastimgfn to figure out the new names
+                return self._rename_outputs()  # uses lastimgfn to figure out the new names
+            else:
+                return [self.cfg.CATALOG_NAME]
         finally:
             if decompfn is not None:
                 if os.path.isfile(decompfn):
@@ -245,7 +247,9 @@ class Sextractor(AstromaticTool):
             self.lastmasterimgfn = masterimgfn
 
             if self.renameoutputs:
-                self._rename_outputs()  # uses lastimgfn to figure out the new names
+                return self._rename_outputs()  # uses lastimgfn to figure out the new names
+            else:
+                return [self.cfg.CATALOG_NAME]
         finally:
             if analysisdecompfn is not None:
                 if os.path.isfile(analysisdecompfn):
@@ -327,6 +331,7 @@ class Sextractor(AstromaticTool):
                 if self.verbose:
                     print("Moving catalog output {0} to {1}".format(ofn, nfn))
                 move(ofn, nfn)
+            catnfn = nfn
 
         #rename XML output if present
         for ofn, nfn in xmlmap.iteritems():
@@ -341,6 +346,8 @@ class Sextractor(AstromaticTool):
                 if self.verbose:
                     print("Moving Check image {0} to {1}".format(ofn, nfn))
                 move(ofn, nfn)
+
+        return catnfn
 
     # used by _try_decompress
     exttodecompresser = {'.fz': 'funpack', '.gz': 'gunzip'}
