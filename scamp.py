@@ -141,21 +141,35 @@ class Scamp(AstromaticTool):
 
         for ofn, nfn in cpmap.iteritems():
             if nfn.endswith('.pdf'):
-                self._do_pstopdf(ofn, nfn)
-                os.remove(ofn)
-            else:
-                if self.verbose:
-                    print("Moving check plot {0} to {1}".format(ofn, nfn))
-                move(ofn, nfn)
+                if self._do_pstopdf(ofn, nfn):
+                    os.remove(ofn)
+                    continue  # instead of moving ps, just remove it
+                else:
+                    #_do_pstopdf returns None/False only if pstopdf missing
+                    nfn = nfn[:-4] + '.ps'
+
+            if self.verbose:
+                print("Moving check plot {0} to {1}".format(ofn, nfn))
+            move(ofn, nfn)
 
     def _do_pstopdf(self, psfn, newfn):
         import subprocess
+        from warnings import warn
         from .utils import which_path
 
         if not getattr(self, '_pstopdfexec', None):
-            self._pstopdfexec = which_path('pstopdf')
+            #try two different common ps to pdf converters
+            self._pstopdfexec = which_path('ps2pdf')
+            if self._pstopdfexec is None:
+                self._pstopdfexec = which_path('pstopdf')
 
-
-        if self.verbose:
-            print("Converting check plot {0} to {1}".format(psfn, newfn))
-        subprocess.check_call([self._pstopdfexec, psfn, '-o', newfn])
+        if self._pstopdfexec is None:
+            warn('Could not find any sort of ps->pdf converter! Cannot output pdf checkplots.')
+        else:
+            if self.verbose:
+                print("Converting check plot {0} to {1}".format(psfn, newfn))
+            if 'pstopdf' in self._pstopdfexec:
+                subprocess.check_call([self._pstopdfexec, psfn, '-o', newfn])
+            else:  # ps2pdf doesn't need the -o - it's just ``ps2pdf infn outfn``
+                subprocess.check_call([self._pstopdfexec, psfn, newfn])
+        return self._pstopdfexec  # None if it failed
