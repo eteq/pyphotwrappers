@@ -333,7 +333,9 @@ class Sextractor(AstromaticTool):
 
         cimgmap = {}
         for cimgfn in self.cfg.CHECKIMAGE_NAME.split(','):
-            cimgfn = cimgfn.strip() + '.fits'  # just in case
+            cimgfn = cimgfn.strip()  # just in case
+            if not cimgfn.endswith('.fits'):
+                cimgfn += '.fits'
             path, fn = os.path.split(cimgfn)
             if self.checkimgpath:
                 path = self.checkimgpath
