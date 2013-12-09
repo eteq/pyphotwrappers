@@ -356,6 +356,12 @@ class AstromaticComments(collections.Mapping):
             return object.__getattribute__(self, key)
         return self._comment_dict[key]
 
+    def __setattr__(self, key, value):
+        if key.startswith('_') or key not in self._comment_dict:
+            object.__setattr__(self, key, value)
+        else:
+            raise AttributeError('Cannot change the value of a config comment')
+
     def __dir__(self):
         drs = dir(self.__class__)
         drs.extend(self.__dict__)
