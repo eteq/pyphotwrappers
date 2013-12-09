@@ -14,23 +14,29 @@ class Sextractor(AstromaticTool):
 
     Parameters
     ----------
-    execpath : None or str
+    execpath : None or str, optional
         Path to executable or None to search for it
-    autodecompress : bool
+    autodecompress : bool, optional
         If True, will automatically use ``funpack`` to unpack input files that
         end in ``.fz`` (SExtractor can't handle fits compression).  Can be a
         string, in which case it points to the executable for funpack.
-    renameoutputs : str or None
+    renameoutputs : str or None, optional
         If present, indicates that the output files should be renamed to the
         provided string pattern.  The string can include '{path}', '{fn}',
         '{input}', and '{object}', meaning the path and name from the
         configuration, the base name of the input file, and the 'OBJECT' fits
         header keyword (if present).
+    checkimgpath : str, optional
+        Path at which to create any generated check images
+    overwrite : bool, optional
+        If True, will overwrite the output catalog even if it already exists.
+    verbose : bool, optional
+        If True, diagnostic information will be printed while running.
     """
     defaultexecname = 'sex'
 
     def __init__(self, execpath=None, autodecompress=True, renameoutputs=None,
-                 checkimgpath=None, verbose=False):
+                 checkimgpath=None, overwrite=True, verbose=False):
         super(Sextractor, self).__init__(execpath, verbose=verbose)
 
         self._parse_outputs(self._invoke_tool(['-dp'])[0])
@@ -42,6 +48,9 @@ class Sextractor(AstromaticTool):
         self.autodecompress = autodecompress
         self.renameoutputs = renameoutputs
         self.checkimgpath = checkimgpath
+        self.overwrite = overwrite
+
+        self.lastimgfn = None
 
     def _parse_outputs(self, contents):
         self.valid_outputs = values = []
@@ -165,6 +174,7 @@ class Sextractor(AstromaticTool):
 
     def get_output(self, astable=True):
         from astropy.io import ascii
+
         if hasattr(self.cfg.CATALOG_NAME, 'content'):
             if self.verbose:
                 print("Getting output from stored content")
@@ -206,6 +216,13 @@ class Sextractor(AstromaticTool):
         if imgfn is None:
             imgfn = getattr(self, 'lastimgfn', None)
 
+        if not self.overwrite:
+            prevoutputfn = self._check_output_exists(imgfn)
+            if prevoutputfn:
+                if self.verbose:
+                    print("Output {0} already exists, not running Sextractor".format(prevoutputfn))
+                return prevoutputfn
+
         decompfn = self._try_decompress(imgfn)
         try:
             self._invoke_tool([imgfn if decompfn is None else decompfn], showoutput=True)
@@ -214,7 +231,7 @@ class Sextractor(AstromaticTool):
             if self.renameoutputs:
                 return self._rename_outputs()  # uses lastimgfn to figure out the new names
             else:
-                return [self.cfg.CATALOG_NAME]
+                return self.cfg.CATALOG_NAME
         finally:
             if decompfn is not None:
                 if os.path.isfile(decompfn):
@@ -236,6 +253,13 @@ class Sextractor(AstromaticTool):
         if analysisimgfn is None:
             analysisimgfn = getattr(self, 'lastimgfn', None)
 
+        if not self.overwrite:
+            prevoutputfn = self._check_output_exists(analysisimgfn)
+            if prevoutputfn:
+                if self.verbose:
+                    print("Output {0} already exists, not running Sextractor".format(prevoutputfn))
+                return prevoutputfn
+
         masterdecompfn = self._try_decompress(masterimgfn)
         analysisdecompfn = self._try_decompress(analysisimgfn)
         try:
@@ -249,7 +273,7 @@ class Sextractor(AstromaticTool):
             if self.renameoutputs:
                 return self._rename_outputs()  # uses lastimgfn to figure out the new names
             else:
-                return [self.cfg.CATALOG_NAME]
+                return self.cfg.CATALOG_NAME
         finally:
             if analysisdecompfn is not None:
                 if os.path.isfile(analysisdecompfn):
@@ -319,6 +343,26 @@ class Sextractor(AstromaticTool):
                 fn=fn, object=object_, input=input_)
 
         return catmap, xmlmap, cimgmap
+
+    def _check_output_exists(self, imgfn):
+        """
+        Returns the name of the output catalog only if it already exists.
+        """
+        if hasattr(self.cfg.CATALOG_NAME, 'content') and self.cfg.CATALOG_NAME.content != '':
+            return 'in-memory'
+        else:
+            if self.renameoutputs:
+                oldimgfn = self.lastimgfn
+                try:
+                    self.lastimgfn = imgfn
+                    catfn = self.get_renamed_output_fns()[0].values()[0]
+                finally:
+                    self.lastimgfn = oldimgfn
+            else:
+                catfn = self.cfg.CATALOG_NAME
+            if os.path.isfile(catfn):
+                return catfn
+        return ''
 
     def _rename_outputs(self):
         from shutil import move
