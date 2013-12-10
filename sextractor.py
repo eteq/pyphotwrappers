@@ -27,7 +27,11 @@ class Sextractor(AstromaticTool):
         configuration, the base name of the input file, and the 'OBJECT' fits
         header keyword (if present).
     checkimgpath : str, optional
-        Path at which to create any generated check images
+        Path at which to move any generated check images
+    compresscheckimg : bool or str, optional
+        If this evaluates to True, will compress any check images with
+        ``fpack``.  If it's actually `True`, will first search for `fpack`, or
+        if a string, it will be interpreted as an executable path to `fpack`.
     overwrite : bool, optional
         If True, will overwrite the output catalog even if it already exists.
     verbose : bool, optional
@@ -36,7 +40,8 @@ class Sextractor(AstromaticTool):
     defaultexecname = 'sex'
 
     def __init__(self, execpath=None, autodecompress=True, renameoutputs=None,
-                 checkimgpath=None, overwrite=True, verbose=False):
+                 checkimgpath=None, compresscheckimg=False, overwrite=True,
+                 verbose=False):
         super(Sextractor, self).__init__(execpath, verbose=verbose)
 
         self._parse_outputs(self._invoke_tool(['-dp'])[0])
@@ -48,6 +53,7 @@ class Sextractor(AstromaticTool):
         self.autodecompress = autodecompress
         self.renameoutputs = renameoutputs
         self.checkimgpath = checkimgpath
+        self.compresscheckimg = compresscheckimg
         self.overwrite = overwrite
 
         self.lastimgfn = None
@@ -229,7 +235,7 @@ class Sextractor(AstromaticTool):
             self.lastimgfn = imgfn
 
             if self.renameoutputs:
-                return self._rename_outputs()  # uses lastimgfn to figure out the new names
+                return self._reprocess_outputs()  # uses lastimgfn to figure out the new names
             else:
                 return self.cfg.CATALOG_NAME
         finally:
@@ -271,7 +277,7 @@ class Sextractor(AstromaticTool):
             self.lastmasterimgfn = masterimgfn
 
             if self.renameoutputs:
-                return self._rename_outputs()  # uses lastimgfn to figure out the new names
+                return self._reprocess_outputs()  # uses lastimgfn to figure out the new names
             else:
                 return self.cfg.CATALOG_NAME
         finally:
@@ -331,6 +337,7 @@ class Sextractor(AstromaticTool):
                 fn=fn, object=object_, input=input_)
         xmlmap = {oldxmlfn: newxmlfn}
 
+        #check images
         cimgmap = {}
         for cimgfn in self.cfg.CHECKIMAGE_NAME.split(','):
             cimgfn = cimgfn.strip()  # just in case
@@ -339,6 +346,9 @@ class Sextractor(AstromaticTool):
             path, fn = os.path.split(cimgfn)
             if self.checkimgpath:
                 path = self.checkimgpath
+
+            if self.compresscheckimg:
+                fn = fn + '.fz'
 
             cimgmap[cimgfn] = self.renameoutputs.format(
                 path=path + ('' if path.endswith(os.path.sep) or path == '' else os.path.sep),
@@ -366,8 +376,12 @@ class Sextractor(AstromaticTool):
                 return catfn
         return ''
 
-    def _rename_outputs(self):
+    def _reprocess_outputs(self):
+        import subprocess
         from shutil import move
+        from warnings import warn
+
+        from .utils import which_path
 
         catmap, xmlmap, cimgmap = self.get_renamed_output_fns()
 
@@ -386,12 +400,25 @@ class Sextractor(AstromaticTool):
                     print("Moving XML output {0} to {1}".format(ofn, nfn))
                 move(ofn, nfn)
 
-        #rename checkimages if present
+        #rename or compress checkimages if present
         for ofn, nfn in cimgmap.iteritems():
             if os.path.isfile(ofn):
-                if self.verbose:
-                    print("Moving Check image {0} to {1}".format(ofn, nfn))
-                move(ofn, nfn)
+                if self.compresscheckimg is True:  # means "need to find fpack"
+                    self.compresscheckimg = which_path('fpack')
+                    if self.compresscheckimg is None:
+                        warn("could not find fpack - cannot compress check images")
+
+                if self.compresscheckimg:
+                    if self.verbose:
+                        print("Compressing check image {0} to {1}".format(ofn, nfn))
+                    cmdline = '{exc} -S -D -Y {ofn} > {nfn}'
+                    cmdline = cmdline.format(exc=self.compresscheckimg,
+                                             ofn=ofn, nfn=nfn)
+                    subprocess.check_call([cmdline], shell=True)
+                else:
+                    if self.verbose:
+                        print("Moving Check image {0} to {1}".format(ofn, nfn))
+                    move(ofn, nfn)
 
         return catnfn
 
