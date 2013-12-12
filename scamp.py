@@ -6,14 +6,39 @@ __all__ = ['Scamp']
 
 
 class Scamp(AstromaticTool):
+    """
+    Driver class for scripting Scamp
+
+    Parameters
+    ----------
+    execpath : None or str, optional
+        Path to executable or None to search for it
+    renameoutputs : str or None, optional
+        If present, indicates that the output files should be renamed to the
+        provided string pattern.  The string can include '{path}', '{fn}',
+        '{input}', meaning the path and name from the configuration, and the
+        base name of the input file.
+    checkplotpath : str, optional
+        Path at which to move any generated check plots
+    pstopdf : bool or str, optional
+        If this evaluates to True, will convert any checkplots to pdf. if a
+        string, it will be interpreted as an executable path to `ps2pdf` or
+        `pstopdf`.
+    overwrite : bool, optional
+        If True, will overwrite the output header files even if they already
+        exist.
+    verbose : bool, optional
+        If True, diagnostic information will be printed while running.
+    """
     defaultexecname = 'scamp'
 
     def __init__(self, execpath=None, renameoutputs=None, checkplotpath=None,
-                 pstopdf=True, verbose=False):
+                 pstopdf=True, overwrite=True, verbose=False):
         super(Scamp, self).__init__(execpath, verbose=verbose)
         self.renameoutputs = renameoutputs
         self.checkplotpath = checkplotpath
         self.pstopdf = pstopdf
+        self.overwrite = overwrite
 
     def scamp_catalogs(self, catfns):
         """
@@ -23,6 +48,13 @@ class Scamp(AstromaticTool):
 
         if isinstance(catfns, basestring):
             catfns = [catfns]
+
+        if not self.overwrite:
+            prevoutputheads = self._check_output_exists(catfns)
+            if prevoutputheads:
+                if self.verbose:
+                    print("Outputs {0} already exist, not running Scamp".format(prevoutputheads))
+                return prevoutputheads
 
         initialcpdev = self.cfg.CHECKPLOT_DEV
         try:
@@ -38,6 +70,8 @@ class Scamp(AstromaticTool):
 
         if self.renameoutputs:
             self._reprocess_outputs()
+
+        return self._check_output_exists(catfns)
 
     def set_ahead_from_dict(self, dct):
         headlns = []
@@ -140,6 +174,10 @@ class Scamp(AstromaticTool):
                 cpmap[fn] = npat.replace('*', rex.match(fn).group(1))
 
         for ofn, nfn in cpmap.iteritems():
+            if self.checkplotpath and os.path.isdir(self.checkplotpath):
+                if self.verbose:
+                    print("Making check plot directory " + self.checkplotpath)
+                os.mkdir(self.checkplotpath)
             if nfn.endswith('.pdf'):
                 if self._do_pstopdf(ofn, nfn):
                     os.remove(ofn)
@@ -151,6 +189,24 @@ class Scamp(AstromaticTool):
             if self.verbose:
                 print("Moving check plot {0} to {1}".format(ofn, nfn))
             move(ofn, nfn)
+
+    def _check_output_exists(self, catfns):
+        import os
+
+        existingheads = []
+
+        for catfn in catfns:
+            splfn = catfn.split('.')
+            if len(splfn) > 0:
+                catbase = '.'.join(splfn[:-1])
+            else:
+                catbase = splfn[0]
+            headfn = catbase + '.head'
+
+            if os.path.exists(headfn):
+                existingheads.append(headfn)
+
+        return existingheads
 
     def _do_pstopdf(self, psfn, newfn):
         import subprocess
