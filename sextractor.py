@@ -4,6 +4,7 @@ import os
 import tempfile
 
 from .astromatic import *
+from . import utils
 
 __all__ = ['Sextractor']
 
@@ -288,10 +289,15 @@ class Sextractor(AstromaticTool):
                 if os.path.isfile(masterdecompfn):
                     os.remove(masterdecompfn)
 
-    def get_renamed_output_fns(self):
+    def get_renamed_output_fns(self, mkdirs=False):
         """
         Gets the names that the sextractor outputs will get mapped to if
         `renameoutputs` is True.
+
+        Parameters
+        ----------
+        mkdirs : bool, optional
+            If True, any directories necessary will be created
 
         Returns
         -------
@@ -328,6 +334,8 @@ class Sextractor(AstromaticTool):
                 path=path + ('' if path.endswith(os.path.sep) or path == '' else os.path.sep),
                 fn=fn, object=object_, input=input_)
         catmap = {oldcatfn: newcatfn}
+        if mkdirs and not os.path.isdir(os.path.split(newcatfn)[0]):
+            utils.nested_mkdir(os.path.split(newcatfn)[0])
 
         #XML output
         oldxmlfn = self.cfg.XML_NAME
@@ -336,6 +344,8 @@ class Sextractor(AstromaticTool):
                 path=path + ('' if path.endswith(os.path.sep) or path == '' else os.path.sep),
                 fn=fn, object=object_, input=input_)
         xmlmap = {oldxmlfn: newxmlfn}
+        if mkdirs and not os.path.isdir(os.path.split(newxmlfn)[0]):
+            utils.nested_mkdir(os.path.split(newxmlfn)[0])
 
         #check images
         cimgmap = {}
@@ -345,6 +355,8 @@ class Sextractor(AstromaticTool):
                 cimgfn += '.fits'
             path, fn = os.path.split(cimgfn)
             if self.checkimgpath:
+                if mkdirs and not os.path.isdir(self.checkimgpath):
+                    utils.nested_mkdir(self.checkimgpath)
                 path = self.checkimgpath
 
             if self.compresscheckimg:
@@ -381,9 +393,7 @@ class Sextractor(AstromaticTool):
         from shutil import move
         from warnings import warn
 
-        from .utils import which_path
-
-        catmap, xmlmap, cimgmap = self.get_renamed_output_fns()
+        catmap, xmlmap, cimgmap = self.get_renamed_output_fns(mkdirs=True)
 
         #rename main catalog
         for ofn, nfn in catmap.iteritems():
@@ -404,7 +414,7 @@ class Sextractor(AstromaticTool):
         for ofn, nfn in cimgmap.iteritems():
             if os.path.isfile(ofn):
                 if self.compresscheckimg is True:  # means "need to find fpack"
-                    self.compresscheckimg = which_path('fpack')
+                    self.compresscheckimg = utils.which_path('fpack')
                     if self.compresscheckimg is None:
                         warn("could not find fpack - cannot compress check images")
 
@@ -435,14 +445,12 @@ class Sextractor(AstromaticTool):
         import time
         import subprocess
 
-        from .utils import which_path
-
         if not self.autodecompress:
             return None  # bail immediately
 
         for ext in self.exttodecompresser:
             if fn.endswith(ext):
-                decompresser = which_path(self.exttodecompresser[ext])
+                decompresser = utils.which_path(self.exttodecompresser[ext])
                 break
         else:
             return None  # not a decompressable file

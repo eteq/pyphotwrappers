@@ -18,3 +18,19 @@ def which_path(execname):
              'Continuing, but you will need to set `execpath` manually.'
              ' Error:\n' + str(e))
     return None
+
+
+def nested_mkdir(dirnm):
+    """
+    makes a directory and all those leading up to it if they don't exist
+    """
+    import os
+
+    dirsmade = []
+    segments = dirnm.split(os.sep)
+    for i in range(len(segments)):
+        dirnm = os.sep.join(segments[:(i + 1)])
+        if not os.path.isdir(dirnm):
+            os.mkdir(dirnm)
+            dirsmade.append(dirnm)
+    return dirsmade

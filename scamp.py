@@ -95,10 +95,15 @@ class Scamp(AstromaticTool):
                       'PSTEX': '.ps'
                      }  # used in get_reprocessed_output_fns
 
-    def get_reprocessed_output_fns(self):
+    def get_reprocessed_output_fns(self, mkdirs=False):
         """
         Gets the names that the scamp outputs will get mapped to if
         `renameoutputs` is True.
+
+        Parameters
+        ----------
+        mkdirs : bool, optional
+            If True, any directories necessary will be created
 
         Returns
         -------
@@ -126,6 +131,8 @@ class Scamp(AstromaticTool):
             path=path + ('' if path.endswith(os.path.sep) or path == '' else os.path.sep),
             fn=fn, input=input_)
         xmlmap = {oldxmlfn: newxmlfn}
+        if mkdirs and not os.path.isdir(os.path.split(newxmlfn)[0]):
+            utils.nested_mkdir(os.path.split(newxmlfn)[0])
 
         cppatmap = {}
         cpext = self._CP_DEV_TO_EXT[self.cfg.CHECKPLOT_DEV]
@@ -138,6 +145,8 @@ class Scamp(AstromaticTool):
 
             #rename checkplot
             if self.checkplotpath:
+                if mkdirs and not os.path.isdir(self.checkimgpath):
+                    utils.nested_mkdir(self.checkimgpath)
                 path = self.checkplotpath
 
             #rename if pstopdf is true
