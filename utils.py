@@ -34,3 +34,6 @@ def nested_mkdir(dirnm):
             os.mkdir(dirnm)
             dirsmade.append(dirnm)
     return dirsmade
+
+# used by _try_decompress in Sextractor and Swarp
+fitsextension_to_decompresser = {'.fz': 'funpack', '.gz': 'gunzip'}

@@ -17,10 +17,16 @@ class Sextractor(AstromaticTool):
     ----------
     execpath : None or str, optional
         Path to executable or None to search for it
-    autodecompress : bool, optional
-        If True, will automatically use ``funpack`` to unpack input files that
-        end in ``.fz`` (SExtractor can't handle fits compression).  Can be a
-        string, in which case it points to the executable for funpack.
+    autodecompress : bool or str, optional
+        Indicates if decompression tools should be used when needed when
+        compressed fits files are encountered.  If True, before runing
+        Sextractor, this object will automatically use whatever executable value
+        is in the  `pyphotwrappers.utils.fitsextension_to_decompresser`
+        dictionary to  decompress files with the extension given by the
+        dictionary key. If True, the file will be decompressed in the same place
+        path as the input file.  If a string, the string gives the path to where
+        it should be decompressed, with the special string 'tempfile' meaning
+        wherever the python `tempfile` package puts named temporary files.
     renameoutputs : str or None, optional
         If present, indicates that the output files should be renamed to the
         provided string pattern.  The string can include '{path}', '{fn}',
@@ -35,6 +41,9 @@ class Sextractor(AstromaticTool):
         if a string, it will be interpreted as an executable path to `fpack`.
     overwrite : bool, optional
         If True, will overwrite the output catalog even if it already exists.
+    keeptemps: bool, optional
+        If True, indicates that temporary files (e.g., decompressed .fits.fz
+        files) should be left in place, otherwise they are deleted.
     verbose : bool, optional
         If True, diagnostic information will be printed while running.
     """
@@ -42,7 +51,7 @@ class Sextractor(AstromaticTool):
 
     def __init__(self, execpath=None, autodecompress=True, renameoutputs=None,
                  checkimgpath=None, compresscheckimg=False, overwrite=True,
-                 verbose=False):
+                 keeptemps=False, verbose=False):
         super(Sextractor, self).__init__(execpath, verbose=verbose)
 
         self._parse_outputs(self._invoke_tool(['-dp'])[0])
@@ -56,6 +65,7 @@ class Sextractor(AstromaticTool):
         self.checkimgpath = checkimgpath
         self.compresscheckimg = compresscheckimg
         self.overwrite = overwrite
+        self.keeptemps = keeptemps
 
         self.lastimgfn = None
 
@@ -240,7 +250,7 @@ class Sextractor(AstromaticTool):
             else:
                 return self.cfg.CATALOG_NAME
         finally:
-            if decompfn is not None:
+            if (not self.keeptemps) and decompfn is not None:
                 if os.path.isfile(decompfn):
                     os.remove(decompfn)
 
@@ -282,10 +292,10 @@ class Sextractor(AstromaticTool):
             else:
                 return self.cfg.CATALOG_NAME
         finally:
-            if analysisdecompfn is not None:
+            if (not self.keeptemps) and analysisdecompfn is not None:
                 if os.path.isfile(analysisdecompfn):
                     os.remove(analysisdecompfn)
-            if masterdecompfn is not None:
+            if (not self.keeptemps) and masterdecompfn is not None:
                 if os.path.isfile(masterdecompfn):
                     os.remove(masterdecompfn)
 
@@ -442,15 +452,12 @@ class Sextractor(AstromaticTool):
 
         return catnfn
 
-    # used by _try_decompress
-    exttodecompresser = {'.fz': 'funpack', '.gz': 'gunzip'}
-
     def _try_decompress(self, fn):
         """
         runs funpack if necessary.
 
-        Returns a (closed) temporary file object, which needs to be manually
-        deleted when no longer needed, or None if funpack is unnecessary
+        Returns a file name for the decompressed file, or None if decompression
+        not needed
         """
         import time
         import subprocess
@@ -458,30 +465,38 @@ class Sextractor(AstromaticTool):
         if not self.autodecompress:
             return None  # bail immediately
 
-        for ext in self.exttodecompresser:
+        for ext in utils.fitsextension_to_decompresser:
             if fn.endswith(ext):
-                decompresser = utils.which_path(self.exttodecompresser[ext])
+                decompresser = utils.which_path(utils.fitsextension_to_decompresser[ext])
                 break
         else:
-            return None  # not a decompressable file
+            return None  # not a decompressible file
 
-        tfn = os.path.split(fn[:-len(ext)])[1]
-        tfn = os.path.join(tempfile.gettempdir(), tempfile.gettempprefix() + tfn)
+        decompfn = os.path.split(fn[:-len(ext)])[1]  # the base file name
+        if self.autodecompress is True:
+            decompfn = os.path.join(os.path.split(fn)[0], decompfn)
+        elif self.autodecompress == 'tempfile':
+            decompfn = os.path.join(tempfile.gettempdir(), tempfile.gettempprefix() + decompfn)
+        else:
+            # use it as the path to where the decompressed file should go
+            decompfn = os.path.join(self.autodecompress, decompfn)
 
-        if os.path.exists(tfn):
-            os.remove(tfn)
+        if os.path.exists(decompfn):
+            #assume it has already been decompressed
+            if self.verbose:
+                print("Not decompressing {0} because it already exists as {1}".format(fn, decompfn))
+        else:
+            if self.verbose:
+                print('Running {prog} to extract file {0} to {1}'.format(fn, decompfn, prog=decompresser))
+            sttime = time.time()
+            retcode = subprocess.call([decompresser, '-O', decompfn, fn])
+            etime = time.time()
+            if retcode != 0:
+                raise OSError('{prog} failed with return code '.format(prog=decompresser) + str(retcode))
+            if self.verbose:
+                print('{prog} finished in {0} secs'.format(etime - sttime, prog=decompresser))
 
-        if self.verbose:
-            print('Running {prog} to extract file {0} to {1}'.format(fn, tfn, prog=decompresser))
-        sttime = time.time()
-        retcode = subprocess.call([decompresser, '-O', tfn, fn])
-        etime = time.time()
-        if retcode != 0:
-            raise OSError('{prog} failed with return code '.format(prog=decompresser) + str(retcode))
-        if self.verbose:
-            print('{prog} finished in {0} secs'.format(etime - sttime, prog=decompresser))
-
-        return tfn
+        return decompfn
 
     def ds9_mark(self, mask=None, sizekey='FLUX_RADIUS', ds9=None, doload=True, clearmarks=True, frame=None):
         """
