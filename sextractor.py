@@ -334,8 +334,11 @@ class Sextractor(AstromaticTool):
                 path=path + ('' if path.endswith(os.path.sep) or path == '' else os.path.sep),
                 fn=fn, object=object_, input=input_)
         catmap = {oldcatfn: newcatfn}
-        if mkdirs and not os.path.isdir(os.path.split(newcatfn)[0]):
-            utils.nested_mkdir(os.path.split(newcatfn)[0])
+        catdir = os.path.split(newcatfn)[0]
+        if mkdirs and catdir and not os.path.isdir(catdir):
+            if self.verbose:
+                print('Making catalog dir "{0}"'.format(catdir))
+            utils.nested_mkdir(catdir)
 
         #XML output
         oldxmlfn = self.cfg.XML_NAME
@@ -344,8 +347,11 @@ class Sextractor(AstromaticTool):
                 path=path + ('' if path.endswith(os.path.sep) or path == '' else os.path.sep),
                 fn=fn, object=object_, input=input_)
         xmlmap = {oldxmlfn: newxmlfn}
-        if mkdirs and not os.path.isdir(os.path.split(newxmlfn)[0]):
-            utils.nested_mkdir(os.path.split(newxmlfn)[0])
+        xmldir = os.path.split(newxmlfn)[0]
+        if mkdirs and xmldir and not os.path.isdir(xmldir):
+            if self.verbose:
+                print('Making XML dir "{0}"'.format(xmldir))
+            utils.nested_mkdir(xmldir)
 
         #check images
         cimgmap = {}
@@ -355,8 +361,6 @@ class Sextractor(AstromaticTool):
                 cimgfn += '.fits'
             path, fn = os.path.split(cimgfn)
             if self.checkimgpath:
-                if mkdirs and not os.path.isdir(self.checkimgpath):
-                    utils.nested_mkdir(self.checkimgpath)
                 path = self.checkimgpath
 
             if self.compresscheckimg:
@@ -364,7 +368,13 @@ class Sextractor(AstromaticTool):
 
             cimgmap[cimgfn] = self.renameoutputs.format(
                 path=path + ('' if path.endswith(os.path.sep) or path == '' else os.path.sep),
-                fn=fn, object=object_, input=input_)
+                fn=fn, object=object_, input=input_)\
+
+            cimgdir = os.path.split(cimgmap[cimgfn])[0]
+            if mkdirs and cimgdir and not os.path.isdir(cimgdir):
+                if self.verbose:
+                    print('Making check image directory "{0}"'.format(cimgdir))
+                utils.nested_mkdir(cimgdir)
 
         return catmap, xmlmap, cimgmap
 

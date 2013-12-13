@@ -1,6 +1,7 @@
 from __future__ import division, print_function
 
 from .astromatic import *
+from . import utils
 
 __all__ = ['Scamp']
 
@@ -131,8 +132,11 @@ class Scamp(AstromaticTool):
             path=path + ('' if path.endswith(os.path.sep) or path == '' else os.path.sep),
             fn=fn, input=input_)
         xmlmap = {oldxmlfn: newxmlfn}
-        if mkdirs and not os.path.isdir(os.path.split(newxmlfn)[0]):
-            utils.nested_mkdir(os.path.split(newxmlfn)[0])
+        xmldir = os.path.split(newxmlfn)[0]
+        if mkdirs and xmldir and not os.path.isdir(xmldir):
+            if self.verbose:
+                print('Making XML dir "{0}"'.format(xmldir))
+            utils.nested_mkdir(xmldir)
 
         cppatmap = {}
         cpext = self._CP_DEV_TO_EXT[self.cfg.CHECKPLOT_DEV]
@@ -145,8 +149,6 @@ class Scamp(AstromaticTool):
 
             #rename checkplot
             if self.checkplotpath:
-                if mkdirs and not os.path.isdir(self.checkimgpath):
-                    utils.nested_mkdir(self.checkimgpath)
                 path = self.checkplotpath
 
             #rename if pstopdf is true
@@ -159,6 +161,12 @@ class Scamp(AstromaticTool):
             baseofn, oext = os.path.splitext(cpfn)
             cppatmap[baseofn + '_*' + oext] = basenfn + '_*' + next
 
+            cpdir = os.path.split(basenfn)[0]
+            if mkdirs and cpdir and not os.path.isdir(cpdir):
+                if self.verbose:
+                    print('Making check plot dir "{0}"'.format(cpdir))
+                utils.nested_mkdir(cpdir)
+
         return xmlmap, cppatmap
 
     def _reprocess_outputs(self):
@@ -167,7 +175,7 @@ class Scamp(AstromaticTool):
         from glob import glob
         from shutil import move
 
-        xmlmap, cppatmap = self.get_reprocessed_output_fns()
+        xmlmap, cppatmap = self.get_reprocessed_output_fns(mkdirs=True)
 
         for ofn, nfn in xmlmap.iteritems():
             if os.path.isfile(ofn):
@@ -183,10 +191,6 @@ class Scamp(AstromaticTool):
                 cpmap[fn] = npat.replace('*', rex.match(fn).group(1))
 
         for ofn, nfn in cpmap.iteritems():
-            if self.checkplotpath and os.path.isdir(self.checkplotpath):
-                if self.verbose:
-                    print("Making check plot directory " + self.checkplotpath)
-                os.mkdir(self.checkplotpath)
             if nfn.endswith('.pdf'):
                 if self._do_pstopdf(ofn, nfn):
                     os.remove(ofn)
@@ -220,13 +224,12 @@ class Scamp(AstromaticTool):
     def _do_pstopdf(self, psfn, newfn):
         import subprocess
         from warnings import warn
-        from .utils import which_path
 
         if not getattr(self, '_pstopdfexec', None):
             #try two different common ps to pdf converters
-            self._pstopdfexec = which_path('ps2pdf')
+            self._pstopdfexec = utils.which_path('ps2pdf')
             if self._pstopdfexec is None:
-                self._pstopdfexec = which_path('pstopdf')
+                self._pstopdfexec = utils.which_path('pstopdf')
 
         if self._pstopdfexec is None:
             warn('Could not find any sort of ps->pdf converter! Cannot output pdf checkplots.')
