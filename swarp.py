@@ -12,18 +12,21 @@ class Swarp(AstromaticTool):
     defaultexecname = 'swarp'
 
     def __init__(self, execpath=None, autodecompress=True, keeptemps=False,
-                 overwrite=True, verbose=False):
+                 fluxscalebytexp=False, overwrite=True, verbose=False):
         super(Swarp, self).__init__(execpath, verbose=verbose)
 
         self.autodecompress = autodecompress
         self.keeptemps = keeptemps
         self.overwrite = overwrite
+        self.fluxscalebytexp = fluxscalebytexp
 
     def swarp_images(self, imgfns, headfns=None, weightfns=None):
         """
         Runs swarp on the given `imgfns`, possibly with the supplied header
         files and weight files.
         """
+        from astropy.io import fits
+
         if not self.overwrite and os.path.exists(self.cfg.IMAGEOUT_NAME):
             print("Swarp output file {0} exists, not running Swarp.".format(self.cfg.IMAGEOUT_NAME))
             return
@@ -40,18 +43,34 @@ class Swarp(AstromaticTool):
                 raise ValueError("Weights were given, but WEIGHT_TYPE is 'NONE'")
 
         decompimgfns = [self._try_decompress(imfn) for imfn in imgfns]
+        infns = [imfn if dimfn is None else dimfn for imfn, dimfn in zip(imgfns, decompimgfns)]
         links = self._determine_links(imgfns, headfns, weightfns)
 
         oldwimg = self.cfg.WEIGHT_IMAGE
+        oldfxsdef = self.cfg.FSCALE_DEFAULT
         try:
             self.cfg.WEIGHT_IMAGE = ''
+
+            if self.fluxscalebytexp:
+                fscales=[]
+                for fn in infns:
+                    hdr = fits.getheader(fn, 0)
+                    if self.cfg.FSCALE_KEYWORD in hdr:
+                        print('Asked to set the flux scale by t_exp, but file '
+                              '"{0}" has a keyword "{1}", so t_exp will be '
+                              'ignored.'.format(fn, self.cfg.FSCALE_KEYWORD))
+                    fscales.append('{0}'.format(1/hdr['EXPTIME']))
+                self.cfg.FSCALE_DEFAULT = ','.join(fscales)
+
             for target, linkname in links:
                 if not os.path.exists(linkname):
                     os.symlink(target, linkname)
 
-            infns = [imfn if dimfn is None else dimfn for imfn, dimfn in zip(imgfns, decompimgfns)]
             self._invoke_tool(infns, showoutput=True)
+
         finally:
+            self.cfg.WEIGHT_IMAGE = oldwimg
+            self.cfg.FSCALE_DEFAULT = oldfxsdef
             if not self.keeptemps:
                 for decompfn in decompimgfns:
                     if decompfn is not None:
@@ -60,7 +79,6 @@ class Swarp(AstromaticTool):
                 for target, linkname in links:
                     if os.path.islink(linkname):
                         os.remove(linkname)
-            self.cfg.WEIGHT_IMAGE = oldwimg
 
     def _determine_links(self, imgfns, headfns, weightfns):
         """
