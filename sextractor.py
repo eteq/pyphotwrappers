@@ -502,6 +502,8 @@ class Sextractor(AstromaticTool):
         """
         Mark the sextracted outputs on ds9.
 
+        Note that this requires `pysao` to be installed.
+
         Parameters
         ----------
         mask : array or None
