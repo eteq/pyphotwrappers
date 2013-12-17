@@ -27,9 +27,16 @@ class Swarp(AstromaticTool):
         """
         from astropy.io import fits
 
-        if not self.overwrite and os.path.exists(self.cfg.IMAGEOUT_NAME):
-            print("Swarp output file {0} exists, not running Swarp.".format(self.cfg.IMAGEOUT_NAME))
-            return
+        if not self.overwrite:
+            if os.path.exists(self.cfg.IMAGEOUT_NAME):
+                print("Swarp output file {0} exists, not running Swarp.".format(self.cfg.IMAGEOUT_NAME))
+                return
+            elif os.path.exists(self.cfg.IMAGEOUT_NAME + '.fz'):
+                print("Swarp output file {0} exists, not running Swarp.".format(self.cfg.IMAGEOUT_NAME + '.fz'))
+                return
+            elif os.path.exists(self.cfg.IMAGEOUT_NAME + '.gz'):
+                print("Swarp output file {0} exists, not running Swarp.".format(self.cfg.IMAGEOUT_NAME + '.gz'))
+                return
 
         if isinstance(imgfns, basestring):
             imgfns = [imgfns]
