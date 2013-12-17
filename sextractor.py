@@ -330,7 +330,7 @@ class Sextractor(AstromaticTool):
             with fits.open(inputfn) as f:
                 for hdu in f:
                     if 'OBJECT' in hdu.header:
-                        object_ = hdu.header['OBJECT']
+                        object_ = hdu.header['OBJECT'].replace(' ', '_')
                         break
                 else:
                     object_ = ''
