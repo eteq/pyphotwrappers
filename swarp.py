@@ -34,9 +34,13 @@ class Swarp(AstromaticTool):
         if isinstance(imgfns, basestring):
             imgfns = [imgfns]
 
-        if headfns is not None and len(headfns) != len(imgfns):
+        if headfns is None:
+            headfns = [None for _ in imgfns]
+        elif len(headfns) != len(imgfns):
             raise ValueError('Gave a different number of header files vs image files')
-        if weightfns is not None:
+        if weightfns is None:
+            weightfns = [None for _ in imgfns]
+        else:
             if len(weightfns) != len(imgfns):
                 raise ValueError('Gave a different number of weight files vs image files')
             if self.cfg.WEIGHT_TYPE == 'NONE':
@@ -88,8 +92,10 @@ class Swarp(AstromaticTool):
         links = []
         for imgfn, headfn, wfn in zip(imgfns, headfns, weightfns):
             baseimgfn = imgfn.split('.fits')[0]
-            links.append((headfn, baseimgfn + self.cfg.HEADER_SUFFIX))
-            links.append((wfn, baseimgfn + self.cfg.WEIGHT_SUFFIX))
+            if headfn is not None:
+                links.append((headfn, baseimgfn + self.cfg.HEADER_SUFFIX))
+            if wfn is not None:
+                links.append((wfn, baseimgfn + self.cfg.WEIGHT_SUFFIX))
         return links
 
     def _try_decompress(self, fn):
