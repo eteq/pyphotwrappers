@@ -1,5 +1,7 @@
 """
 A python module for interacting and scripting with DAOphot command-line tools.
+
+Note that this is a work-in-progess and not yet functional
 """
 from __future__ import division, print_function
 
