@@ -1,5 +1,5 @@
 """
-Python wrappers for photometry tools
+Python wrappers for (mostly astromatic) photometry tools
 """
 
 # Affiliated packages may add whatever they like to this file, but
